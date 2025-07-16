@@ -5,7 +5,6 @@ import JSZip from "jszip";
 import { saveAs } from "file-saver";
 import "@vscode/codicons/dist/codicon.css";
 
-// VS Code sidebar icons
 const SIDEBAR_ICONS = [
   { icon: "codicon codicon-files", label: "Files" },
   { icon: "codicon codicon-search", label: "Search" },
@@ -14,7 +13,6 @@ const SIDEBAR_ICONS = [
   { icon: "codicon codicon-settings-gear", label: "Settings" },
 ];
 
-// File templates
 const LANGUAGES = [
   { type: "html", label: "HTML", icon: "codicon codicon-code", ext: ".html", sample: "<h1>Hello, Vibe!</h1>" },
   { type: "css", label: "CSS", icon: "codicon codicon-symbol-color", ext: ".css", sample: "h1 { color: #0099ff; }" },
@@ -69,6 +67,9 @@ function App() {
   const [showStatus, setShowStatus] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
 
+  // Appearance modal
+  const [showAppearanceModal, setShowAppearanceModal] = useState(false);
+
   // Fonts & themes
   const FONT_OPTIONS = [
     "Fira Mono", "Fira Code", "JetBrains Mono",
@@ -84,7 +85,7 @@ function App() {
 
   // VS Code-like UI
   const [sidebarWidth] = useState(55);
-  const [explorerWidth, setExplorerWidth] = useState(220);
+  const [explorerWidth] = useState(220);
 
   // Monaco Editor refs
   const iframeRef = useRef();
@@ -195,22 +196,18 @@ function App() {
   async function handleZipUpload(file) {
     try {
       const zip = await JSZip.loadAsync(file);
-      const filePromises = [];
-      zip.forEach((relativePath, zipEntry) => {
-        if (!zipEntry.dir) {
-          filePromises.push(
-            zipEntry.async("string").then(code => {
-              let ext = relativePath.split('.').pop().toLowerCase();
-              let type = ["html","css","js","py","md"].includes(ext) ? ext : "txt";
-              let fname = zipEntry.name;
-              return { name: fname, type, code };
-            })
-          );
+      const filesArr = [];
+      const entries = Object.values(zip.files);
+      for (const entry of entries) {
+        if (!entry.dir) {
+          const code = await entry.async("string");
+          let ext = entry.name.split('.').pop().toLowerCase();
+          let type = ["html","css","js","py","md"].includes(ext) ? ext : "txt";
+          filesArr.push({ name: entry.name, type, code });
         }
-      });
-      const newFiles = await Promise.all(filePromises);
-      if (newFiles.length > 0) {
-        setFiles(newFiles);
+      }
+      if (filesArr.length > 0) {
+        setFiles(filesArr);
         setActiveFileIdx(0);
       } else {
         alert("No valid files found in the ZIP!");
@@ -253,7 +250,6 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeydown);
   }, [paletteOpen]);
 
-  // --- Drag and drop wrapper ---
   return (
     <div
       onDragOver={e => { e.preventDefault(); setDragOver(true); }}
@@ -304,7 +300,9 @@ function App() {
           <span className="codicon codicon-search" /> <span style={{fontSize:15,marginLeft:2}}>Cmd Palette</span>
         </button>
       </div>
-      <div style={{flex:1,display:"flex",minHeight:0}}>
+
+      {/* Main layout, always uses entire height */}
+      <div style={{flex:1,display:"flex",minHeight:0, height: "calc(100vh - 34px)"}}>
         {/* Sidebar */}
         {showSidebar &&
         <div style={{
@@ -357,39 +355,24 @@ function App() {
           )}
         </div>
         {/* Main Editor Area */}
-        <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,background:darkMode?"#1e1e1e":"#f4f8fa"}}>
-          {/* --- Toolbar: Font/Theme Selector + Download & Upload ZIP --- */}
+        <div style={{
+          flex:1,
+          display:"flex",
+          flexDirection:"column",
+          minWidth:0,
+          background:darkMode?"#1e1e1e":"#f4f8fa",
+          height: "100%",
+        }}>
+          {/* Toolbar: Download, Upload ZIP, Appearance Modal button */}
           <div style={{
             display: "flex", alignItems: "center", gap: 12,
             background: darkMode ? "#181c23" : "#ddebf7",
             borderBottom: darkMode ? "1.5px solid #26292e" : "1.5px solid #e2effa",
             padding: "6px 22px 6px 14px"
           }}>
-            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Font:
-              <select value={font} onChange={e => setFont(e.target.value)} style={{marginLeft:6}}>
-                {FONT_OPTIONS.map(f => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-            </label>
-            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Font Size:
-              <select value={fontSize} onChange={e => setFontSize(Number(e.target.value))} style={{marginLeft:6}}>
-                {[13,14,15,16,18,20,22,24].map(n => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
-            </label>
-            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Theme:
-              <select value={editorTheme} onChange={e => setEditorTheme(e.target.value)} style={{marginLeft:6}}>
-                <option value="vs-dark">VS Code Dark</option>
-                <option value="vs-light">VS Code Light</option>
-                <option value="hc-black">High Contrast</option>
-                <option value="hc-light">High Contrast Light</option>
-              </select>
-            </label>
             <button onClick={downloadZip} style={{
               background:"#079afc",color:"#fff",border:"none",padding:"7px 17px",
-              borderRadius:8,fontWeight:"bold",marginLeft:18,cursor:"pointer"
+              borderRadius:8,fontWeight:"bold",marginLeft:2,cursor:"pointer"
             }}>Download ZIP</button>
             <label style={{
               background:"#45e399", color:"#144928", fontWeight:"bold",
@@ -406,8 +389,18 @@ function App() {
                 }}
               />
             </label>
+            <button
+              onClick={() => setShowAppearanceModal(true)}
+              style={{
+                marginLeft: 18, background: "#eee", color: "#222",
+                border: "1px solid #bbb", padding: "7px 17px",
+                borderRadius: 8, fontWeight: "bold", cursor: "pointer"
+              }}
+            >
+              Appearance
+            </button>
           </div>
-          {/* --- Tab Bar --- */}
+          {/* Tab Bar */}
           <div style={{
             display:"flex",alignItems:"center",height:36,background:"#23272e",borderBottom:"1.5px solid #25282f"
           }}>
@@ -436,10 +429,15 @@ function App() {
               );
             })}
           </div>
-          {/* --- Monaco Editor and Preview --- */}
-          <div style={{flex:1,display:"flex",minHeight:0}}>
+          {/* Monaco Editor + Preview */}
+          <div style={{
+            flex:1,
+            display:"flex",
+            minHeight:0,
+            height: "100%"
+          }}>
             {/* Monaco Editor */}
-            <div style={{flex:2,minWidth:0,background:"#1e1e1e",display:"flex",flexDirection:"column"}}>
+            <div style={{flex:2,minWidth:0,background:"#1e1e1e",display:"flex",flexDirection:"column",height:"100%"}}>
               <MonacoEditor
                 height="100%"
                 width="100%"
@@ -481,7 +479,7 @@ function App() {
             {/* Preview for HTML/CSS/JS */}
             {["html","css","js"].includes(files[activeFileIdx].type) && (
               <div style={{
-                flex:1,minWidth:0,background:"#151a1e",display:"flex",flexDirection:"column"
+                flex:1,minWidth:0,background:"#151a1e",display:"flex",flexDirection:"column",height:"100%"
               }}>
                 <div style={{
                   fontWeight:700,fontSize:14,color:"#09f",padding:"10px 8px",background:"#181e22"
@@ -514,6 +512,7 @@ function App() {
         <span style={{flex:1}}/>
         <span style={{marginRight:15,fontWeight:700,color:"#35e6b6"}}>VS Code Style • {darkMode?"Dark":"Light"}</span>
       </div>}
+
       {/* ----- COMMAND PALETTE MODAL ----- */}
       <Modal
         isOpen={paletteOpen}
@@ -558,6 +557,59 @@ function App() {
             ))}
           </div>
           <div style={{color:"#aaa",marginTop:12,fontSize:12}}>Press <b>ESC</b> to close.</div>
+        </div>
+      </Modal>
+
+      {/* ----- APPEARANCE MODAL ----- */}
+      <Modal
+        isOpen={showAppearanceModal}
+        onRequestClose={() => setShowAppearanceModal(false)}
+        style={{
+          overlay: { background: "rgba(0,0,0,0.18)", zIndex: 200 },
+          content: {
+            top: "26%", left: "50%", right: "auto", bottom: "auto", transform: "translate(-50%,0)",
+            background: darkMode ? "#212130" : "#fafcff", borderRadius: 11, padding: 0,
+            boxShadow: "0 12px 38px #2ad7", width: 350, maxWidth: "98vw"
+          }
+        }}
+        ariaHideApp={false}
+      >
+        <div style={{padding:"24px 24px 20px 24px"}}>
+          <h2 style={{marginTop:0,color:darkMode?"#55e5ff":"#196f93"}}>Appearance</h2>
+          <div style={{marginTop:18,marginBottom:10}}>
+            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Font:
+              <select value={font} onChange={e => setFont(e.target.value)} style={{marginLeft:8}}>
+                {FONT_OPTIONS.map(f => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div style={{marginBottom:10}}>
+            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Font Size:
+              <select value={fontSize} onChange={e => setFontSize(Number(e.target.value))} style={{marginLeft:8}}>
+                {[13,14,15,16,18,20,22,24].map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Theme:
+              <select value={editorTheme} onChange={e => setEditorTheme(e.target.value)} style={{marginLeft:8}}>
+                <option value="vs-dark">VS Code Dark</option>
+                <option value="vs-light">VS Code Light</option>
+                <option value="hc-black">High Contrast</option>
+                <option value="hc-light">High Contrast Light</option>
+              </select>
+            </label>
+          </div>
+          <button
+            onClick={() => setShowAppearanceModal(false)}
+            style={{background:"#36b6e6",color:"#fff",border:"none",borderRadius:7,padding:"7px 24px",fontWeight:"bold",fontSize:16,cursor:"pointer"}}
+          >
+            Close
+          </button>
         </div>
       </Modal>
     </div>
