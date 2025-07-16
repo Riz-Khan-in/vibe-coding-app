@@ -7,6 +7,27 @@ function App() {
   const [js, setJs] = useState('console.log("Vibe JS!");');
   const iframeRef = useRef(null);
 
+  // For animated background
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      body {
+        min-height:100vh;
+        margin:0;
+        background: linear-gradient(-45deg, #0f2027, #2c5364, #0093e9, #80d0c7);
+        background-size: 400% 400%;
+        animation: gradientBG 12s ease infinite;
+      }
+      @keyframes gradientBG {
+        0% {background-position: 0% 50%;}
+        50% {background-position: 100% 50%;}
+        100% {background-position: 0% 50%;}
+      }
+    `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
   const buildSrcDoc = () => `
     <!DOCTYPE html>
     <html lang="en">
@@ -28,57 +49,69 @@ function App() {
     </html>
   `;
 
-  // Update iframe on code change
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (iframeRef.current) {
         iframeRef.current.srcdoc = buildSrcDoc();
       }
-    }, 400); // Debounce for smooth updates
+    }, 400);
     return () => clearTimeout(timeout);
   }, [html, css, js]);
 
   return (
     <div style={{
       minHeight: "100vh",
-      background: "linear-gradient(135deg, #0f2027, #2c5364 70%)",
-      fontFamily: "Segoe UI, Arial, sans-serif"
+      paddingBottom: 0,
+      fontFamily: "Segoe UI, Arial, sans-serif",
+      overflowX: "hidden"
     }}>
+      {/* Glassmorphic Header */}
       <header style={{
-        background: "rgba(255,255,255,0.12)",
-        backdropFilter: "blur(8px)",
-        borderBottom: "1px solid #222c",
-        padding: "18px 0",
+        background: "rgba(255,255,255,0.15)",
+        backdropFilter: "blur(10px)",
+        borderBottom: "1.5px solid #1e293b60",
+        padding: "22px 0 18px 0",
         textAlign: "center",
-        boxShadow: "0 2px 6px #222c"
+        boxShadow: "0 2px 18px #090c",
+        letterSpacing: "1.5px"
       }}>
         <span style={{
-          fontWeight: "bold",
-          fontSize: "2rem",
+          fontWeight: 900,
+          fontSize: "2.4rem",
           color: "#fff",
-          letterSpacing: "1px",
-          textShadow: "0 2px 10px #2228"
+          textShadow: "0 3px 24px #222b, 0 1px 1px #fff4"
         }}>
           Vibe Coding Playground
         </span>
       </header>
+      {/* Editors & Preview Container */}
       <div style={{
         margin: "32px auto",
-        maxWidth: 1200,
-        background: "rgba(22,24,34,0.98)",
-        borderRadius: "24px",
-        boxShadow: "0 6px 24px #000a",
-        padding: "28px"
+        maxWidth: 1280,
+        background: "rgba(28,36,54,0.93)",
+        borderRadius: "2.2rem",
+        boxShadow: "0 8px 36px #1e293b60",
+        padding: "32px 28px 38px 28px",
+        backdropFilter: "blur(6px)",
+        border: "1.5px solid #36b6e6a0"
       }}>
         <div style={{
           display: "flex",
-          gap: 12,
-          flexWrap: "wrap"
+          gap: 20,
+          flexWrap: "wrap",
+          marginBottom: 36
         }}>
-          <div style={{ flex: 1, minWidth: 250 }}>
-            <div style={{color:"#7dd3fc",marginBottom:6,fontWeight:"bold"}}>HTML</div>
+          {/* HTML */}
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{
+              color: "#7dd3fc",
+              marginBottom: 10,
+              fontWeight: "bold",
+              fontSize: "1.12rem",
+              letterSpacing: "0.5px"
+            }}>HTML</div>
             <MonacoEditor
-              height="28vh"
+              height="27vh"
               language="html"
               theme="vs-dark"
               value={html}
@@ -86,10 +119,17 @@ function App() {
               onChange={setHtml}
             />
           </div>
-          <div style={{ flex: 1, minWidth: 250 }}>
-            <div style={{color:"#bbf7d0",marginBottom:6,fontWeight:"bold"}}>CSS</div>
+          {/* CSS */}
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{
+              color: "#bbf7d0",
+              marginBottom: 10,
+              fontWeight: "bold",
+              fontSize: "1.12rem",
+              letterSpacing: "0.5px"
+            }}>CSS</div>
             <MonacoEditor
-              height="28vh"
+              height="27vh"
               language="css"
               theme="vs-dark"
               value={css}
@@ -97,10 +137,17 @@ function App() {
               onChange={setCss}
             />
           </div>
-          <div style={{ flex: 1, minWidth: 250 }}>
-            <div style={{color:"#fca5a5",marginBottom:6,fontWeight:"bold"}}>JavaScript</div>
+          {/* JS */}
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{
+              color: "#fca5a5",
+              marginBottom: 10,
+              fontWeight: "bold",
+              fontSize: "1.12rem",
+              letterSpacing: "0.5px"
+            }}>JavaScript</div>
             <MonacoEditor
-              height="28vh"
+              height="27vh"
               language="javascript"
               theme="vs-dark"
               value={js}
@@ -109,12 +156,21 @@ function App() {
             />
           </div>
         </div>
-        <div style={{marginTop: "30px"}}>
+        {/* Preview Box */}
+        <div style={{
+          marginTop: 20,
+          borderRadius: "1.4rem",
+          background: "linear-gradient(110deg, #36b6e61e 40%, #80d0c733 100%)",
+          padding: "18px",
+          boxShadow: "0 2px 24px #09abe710",
+          border: "1.5px solid #36b6e64a"
+        }}>
           <div style={{
             fontWeight: "bold",
             fontSize: "1.15rem",
             color: "#fff",
-            marginBottom: "8px"
+            marginBottom: "8px",
+            letterSpacing: ".5px"
           }}>Live Preview:</div>
           <iframe
             title="Live Preview"
@@ -122,23 +178,17 @@ function App() {
             sandbox="allow-scripts allow-same-origin"
             style={{
               width: "100%",
-              height: "320px",
-              borderRadius: "14px",
-              background: "#fff"
+              height: "340px",
+              borderRadius: "12px",
+              background: "#f8fafc",
+              border: "none",
+              boxShadow: "0 2px 14px #09abe720"
             }}
           />
         </div>
       </div>
+      {/* Footer */}
       <footer style={{
-        color: "#fff8",
+        color: "#fff9",
         textAlign: "center",
-        margin: "32px 0 12px 0",
-        fontSize: "1rem"
-      }}>
-        © {new Date().getFullYear()} Vibe Coding App | Built with React & Monaco Editor
-      </footer>
-    </div>
-  );
-}
-
-export default App;
+        margin: "
