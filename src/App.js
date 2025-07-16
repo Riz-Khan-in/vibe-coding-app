@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import MonacoEditor from "react-monaco-editor";
 
-// For resizing, we use this simple hook:
-function useResizable(defaultHeight = 260) {
+// Custom hook for vertical resize (for editors)
+function useResizable(defaultHeight = 220) {
   const [height, setHeight] = useState(defaultHeight);
   const ref = useRef();
   useEffect(() => {
@@ -30,19 +30,40 @@ function useResizable(defaultHeight = 260) {
   return [height, ref];
 }
 
-const FONT_OPTIONS = [
-  "Fira Mono",
-  "Source Code Pro",
-  "JetBrains Mono",
-  "Roboto Mono",
-  "Cascadia Mono",
-  "Ubuntu Mono",
-  "Monaco",
-  "Menlo",
-  "Consolas",
-  "monospace"
-];
+// Custom hook for horizontal resize (for preview in row mode)
+function useHorizontalResizable(defaultWidth = 400, min = 260, max = 900) {
+  const [width, setWidth] = useState(defaultWidth);
+  const ref = useRef();
+  useEffect(() => {
+    const handle = ref.current;
+    if (!handle) return;
+    let startX, startWidth;
+    const onMouseMove = e => {
+      setWidth(Math.max(min, Math.min(max, startWidth - (e.clientX - startX))));
+    };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    const onMouseDown = e => {
+      startX = e.clientX;
+      startWidth = width;
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+      e.preventDefault();
+    };
+    handle.addEventListener('mousedown', onMouseDown);
+    return () => {
+      handle.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [width]);
+  return [width, ref];
+}
 
+const FONT_OPTIONS = [
+  "Fira Mono", "Source Code Pro", "JetBrains Mono", "Roboto Mono",
+  "Cascadia Mono", "Ubuntu Mono", "Monaco", "Menlo", "Consolas", "monospace"
+];
 const THEME_OPTIONS = [
   { label: "Dark (vs-dark)", value: "vs-dark" },
   { label: "Light (vs-light)", value: "vs-light" },
@@ -65,14 +86,13 @@ function App() {
   const [heightHTML, refHTML] = useResizable(220);
   const [heightCSS, refCSS] = useResizable(220);
   const [heightJS, refJS] = useResizable(220);
+  const [previewWidth, refPreview] = useHorizontalResizable(410, 260, 900);
   const iframeRef = useRef(null);
 
-  // Register extra Monaco themes if needed (solarized etc)
+  // Register extra Monaco themes if needed
   useEffect(() => {
-    // Monaco is loaded dynamically by the component
     if (window.monaco && window.monaco.editor) {
       try {
-        // Solarized Dark
         window.monaco.editor.defineTheme('solarized-dark', {
           base: 'vs-dark',
           inherit: true,
@@ -85,7 +105,6 @@ function App() {
             'editor.selectionBackground': '#073642'
           }
         });
-        // Solarized Light
         window.monaco.editor.defineTheme('solarized-light', {
           base: 'vs',
           inherit: true,
@@ -102,7 +121,7 @@ function App() {
     }
   }, [editorTheme]);
 
-  // For animated background
+  // Animated background
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
@@ -157,7 +176,6 @@ function App() {
     return () => clearTimeout(timeout);
   }, [html, css, js]);
 
-  // Sync editor theme with darkMode, but allow manual override
   useEffect(() => {
     setEditorTheme(darkMode ? "vs-dark" : "vs-light");
   }, [darkMode]);
@@ -165,11 +183,10 @@ function App() {
   return (
     <div style={{
       minHeight: "100vh",
-      paddingBottom: 0,
       fontFamily: "Segoe UI, Arial, sans-serif",
       overflowX: "hidden"
     }}>
-      {/* Glassmorphic Header */}
+      {/* Header */}
       <header style={{
         background: darkMode ? "rgba(255,255,255,0.15)" : "rgba(60,60,60,0.07)",
         backdropFilter: "blur(10px)",
@@ -229,7 +246,7 @@ function App() {
           : "1.5px solid #c8e7fa",
         transition: ".3s"
       }}>
-        {/* Layout and Full Screen Controls */}
+        {/* Controls */}
         <div style={{
           display: "flex",
           justifyContent: "space-between",
@@ -238,7 +255,6 @@ function App() {
           marginBottom: 16,
           gap: 10
         }}>
-          {/* Arrangement and full screen buttons */}
           <div>
             <button
               style={{
@@ -288,7 +304,6 @@ function App() {
               {fullScreen === "preview" ? "Exit Preview Fullscreen" : "Preview Fullscreen"}
             </button>
           </div>
-          {/* Font/theme settings */}
           <div style={{display:"flex", gap:18, alignItems:"center", flexWrap:"wrap"}}>
             <label style={{color:darkMode ? "#fff" : "#111", fontWeight:600}}>Font:
               <select value={font} onChange={e => setFont(e.target.value)} style={{marginLeft:6}}>
@@ -316,157 +331,257 @@ function App() {
           </div>
         </div>
 
-        {/* Editors */}
-        {fullScreen !== "preview" && (
-        <div style={{
-          display: "flex",
-          flexDirection: layout,
-          gap: 20,
-          flexWrap: layout === "row" ? "wrap" : "nowrap",
-          marginBottom: 36
-        }}>
-          {/* HTML */}
-          <div style={{ flex: 1, minWidth: 240, position: "relative" }}>
-            <div style={{
-              color: "#7dd3fc",
-              marginBottom: 10,
-              fontWeight: "bold",
-              fontSize: "1.12rem",
-              letterSpacing: "0.5px"
-            }}>HTML</div>
-            <MonacoEditor
-              height={heightHTML}
-              language="html"
-              theme={editorTheme}
-              value={html}
-              options={{
-                fontSize: fontSize,
-                fontFamily: font,
-                minimap: { enabled: false }
-              }}
-              onChange={setHtml}
-            />
-            <div
-              ref={refHTML}
-              style={{
-                position: "absolute",
-                left: 0, right: 0, bottom: 0,
-                height: 8,
-                cursor: "row-resize",
-                background: "rgba(0,0,0,0.05)"
-              }}
-              title="Drag to resize"
-            />
-          </div>
-          {/* CSS */}
-          <div style={{ flex: 1, minWidth: 240, position: "relative" }}>
-            <div style={{
-              color: "#bbf7d0",
-              marginBottom: 10,
-              fontWeight: "bold",
-              fontSize: "1.12rem",
-              letterSpacing: "0.5px"
-            }}>CSS</div>
-            <MonacoEditor
-              height={heightCSS}
-              language="css"
-              theme={editorTheme}
-              value={css}
-              options={{
-                fontSize: fontSize,
-                fontFamily: font,
-                minimap: { enabled: false }
-              }}
-              onChange={setCss}
-            />
-            <div
-              ref={refCSS}
-              style={{
-                position: "absolute",
-                left: 0, right: 0, bottom: 0,
-                height: 8,
-                cursor: "row-resize",
-                background: "rgba(0,0,0,0.05)"
-              }}
-              title="Drag to resize"
-            />
-          </div>
-          {/* JS */}
-          <div style={{ flex: 1, minWidth: 240, position: "relative" }}>
-            <div style={{
-              color: "#fca5a5",
-              marginBottom: 10,
-              fontWeight: "bold",
-              fontSize: "1.12rem",
-              letterSpacing: "0.5px"
-            }}>JavaScript</div>
-            <MonacoEditor
-              height={heightJS}
-              language="javascript"
-              theme={editorTheme}
-              value={js}
-              options={{
-                fontSize: fontSize,
-                fontFamily: font,
-                minimap: { enabled: false }
-              }}
-              onChange={setJs}
-            />
-            <div
-              ref={refJS}
-              style={{
-                position: "absolute",
-                left: 0, right: 0, bottom: 0,
-                height: 8,
-                cursor: "row-resize",
-                background: "rgba(0,0,0,0.05)"
-              }}
-              title="Drag to resize"
-            />
-          </div>
-        </div>
-        )}
-
-        {/* Preview Box */}
-        {fullScreen !== "editors" && (
-        <div style={{
-          marginTop: 20,
-          borderRadius: "1.4rem",
-          background: darkMode
-            ? "linear-gradient(110deg, #36b6e61e 40%, #80d0c733 100%)"
-            : "linear-gradient(110deg, #c8e7fa22 40%, #faffb933 100%)",
-          padding: "18px",
-          boxShadow: darkMode
-            ? "0 2px 24px #09abe710"
-            : "0 2px 14px #a3e8e9a0",
-          border: darkMode
-            ? "1.5px solid #36b6e64a"
-            : "1.5px solid #aad1ea",
-          transition: ".2s"
-        }}>
+        {/* Editors + Preview */}
+        {layout === "row" && fullScreen !== "preview" && fullScreen !== "editors" ? (
           <div style={{
-            fontWeight: "bold",
-            fontSize: "1.15rem",
-            color: darkMode ? "#fff" : "#1e293b",
-            marginBottom: "8px",
-            letterSpacing: ".5px"
-          }}>Live Preview:</div>
-          <iframe
-            title="Live Preview"
-            ref={iframeRef}
-            sandbox="allow-scripts allow-same-origin"
-            style={{
-              width: "100%",
-              height: "340px",
-              borderRadius: "12px",
-              background: "#f8fafc",
-              border: "none",
+            display: "flex",
+            gap: 20,
+            minHeight: 320
+          }}>
+            <div style={{
+              flex: 2.2,
+              display: "flex",
+              flexDirection: "row",
+              gap: 20
+            }}>
+              {/* HTML Editor */}
+              <div style={{ flex: 1, minWidth: 190, position: "relative" }}>
+                <div style={{color: "#7dd3fc", marginBottom: 10, fontWeight: "bold", fontSize: "1.12rem"}}>HTML</div>
+                <MonacoEditor
+                  height={heightHTML}
+                  language="html"
+                  theme={editorTheme}
+                  value={html}
+                  options={{
+                    fontSize: fontSize,
+                    fontFamily: font,
+                    minimap: { enabled: false }
+                  }}
+                  onChange={setHtml}
+                />
+                <div
+                  ref={refHTML}
+                  style={{
+                    position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
+                    cursor: "row-resize", background: "rgba(0,0,0,0.05)"
+                  }}
+                  title="Drag to resize"
+                />
+              </div>
+              {/* CSS Editor */}
+              <div style={{ flex: 1, minWidth: 190, position: "relative" }}>
+                <div style={{color: "#bbf7d0", marginBottom: 10, fontWeight: "bold", fontSize: "1.12rem"}}>CSS</div>
+                <MonacoEditor
+                  height={heightCSS}
+                  language="css"
+                  theme={editorTheme}
+                  value={css}
+                  options={{
+                    fontSize: fontSize,
+                    fontFamily: font,
+                    minimap: { enabled: false }
+                  }}
+                  onChange={setCss}
+                />
+                <div
+                  ref={refCSS}
+                  style={{
+                    position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
+                    cursor: "row-resize", background: "rgba(0,0,0,0.05)"
+                  }}
+                  title="Drag to resize"
+                />
+              </div>
+              {/* JS Editor */}
+              <div style={{ flex: 1, minWidth: 190, position: "relative" }}>
+                <div style={{color: "#fca5a5", marginBottom: 10, fontWeight: "bold", fontSize: "1.12rem"}}>JavaScript</div>
+                <MonacoEditor
+                  height={heightJS}
+                  language="javascript"
+                  theme={editorTheme}
+                  value={js}
+                  options={{
+                    fontSize: fontSize,
+                    fontFamily: font,
+                    minimap: { enabled: false }
+                  }}
+                  onChange={setJs}
+                />
+                <div
+                  ref={refJS}
+                  style={{
+                    position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
+                    cursor: "row-resize", background: "rgba(0,0,0,0.05)"
+                  }}
+                  title="Drag to resize"
+                />
+              </div>
+            </div>
+            {/* Resizable Preview */}
+            <div style={{
+              position: "relative",
+              flex: 1.3,
+              minWidth: 210,
+              maxWidth: 900,
+              background: darkMode
+                ? "linear-gradient(110deg, #36b6e61e 40%, #80d0c733 100%)"
+                : "linear-gradient(110deg, #c8e7fa22 40%, #faffb933 100%)",
+              borderRadius: "1.2rem",
+              padding: "8px 8px 8px 16px",
               boxShadow: darkMode
-                ? "0 2px 14px #09abe720"
-                : "0 2px 10px #b9ebfc80"
-            }}
-          />
-        </div>
+                ? "0 2px 14px #09abe710"
+                : "0 2px 10px #b9ebfc80",
+              border: darkMode
+                ? "1.5px solid #36b6e64a"
+                : "1.5px solid #aad1ea",
+              width: previewWidth,
+              transition: ".2s"
+            }}>
+              <div
+                ref={refPreview}
+                style={{
+                  position: "absolute", left: -9, top: 0, width: 10, height: "100%",
+                  cursor: "col-resize", zIndex: 9, background: "rgba(0,0,0,0.01)"
+                }}
+                title="Drag to resize preview"
+              />
+              <div style={{fontWeight:"bold", fontSize:"1.1rem", color: darkMode ? "#fff":"#1e293b", marginBottom:8, letterSpacing:".5px", marginLeft:6}}>Live Preview:</div>
+              <iframe
+                title="Live Preview"
+                ref={iframeRef}
+                sandbox="allow-scripts allow-same-origin"
+                style={{
+                  width: "100%",
+                  height: "340px",
+                  borderRadius: "12px",
+                  background: "#f8fafc",
+                  border: "none"
+                }}
+              />
+            </div>
+          </div>
+        ) : (
+          // Column layout (editors stacked, preview below)
+          <>
+            {fullScreen !== "preview" && (
+            <div style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 20,
+              marginBottom: 36
+            }}>
+              {/* HTML Editor */}
+              <div style={{ flex: 1, minWidth: 190, position: "relative" }}>
+                <div style={{color: "#7dd3fc", marginBottom: 10, fontWeight: "bold", fontSize: "1.12rem"}}>HTML</div>
+                <MonacoEditor
+                  height={heightHTML}
+                  language="html"
+                  theme={editorTheme}
+                  value={html}
+                  options={{
+                    fontSize: fontSize,
+                    fontFamily: font,
+                    minimap: { enabled: false }
+                  }}
+                  onChange={setHtml}
+                />
+                <div
+                  ref={refHTML}
+                  style={{
+                    position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
+                    cursor: "row-resize", background: "rgba(0,0,0,0.05)"
+                  }}
+                  title="Drag to resize"
+                />
+              </div>
+              {/* CSS Editor */}
+              <div style={{ flex: 1, minWidth: 190, position: "relative" }}>
+                <div style={{color: "#bbf7d0", marginBottom: 10, fontWeight: "bold", fontSize: "1.12rem"}}>CSS</div>
+                <MonacoEditor
+                  height={heightCSS}
+                  language="css"
+                  theme={editorTheme}
+                  value={css}
+                  options={{
+                    fontSize: fontSize,
+                    fontFamily: font,
+                    minimap: { enabled: false }
+                  }}
+                  onChange={setCss}
+                />
+                <div
+                  ref={refCSS}
+                  style={{
+                    position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
+                    cursor: "row-resize", background: "rgba(0,0,0,0.05)"
+                  }}
+                  title="Drag to resize"
+                />
+              </div>
+              {/* JS Editor */}
+              <div style={{ flex: 1, minWidth: 190, position: "relative" }}>
+                <div style={{color: "#fca5a5", marginBottom: 10, fontWeight: "bold", fontSize: "1.12rem"}}>JavaScript</div>
+                <MonacoEditor
+                  height={heightJS}
+                  language="javascript"
+                  theme={editorTheme}
+                  value={js}
+                  options={{
+                    fontSize: fontSize,
+                    fontFamily: font,
+                    minimap: { enabled: false }
+                  }}
+                  onChange={setJs}
+                />
+                <div
+                  ref={refJS}
+                  style={{
+                    position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
+                    cursor: "row-resize", background: "rgba(0,0,0,0.05)"
+                  }}
+                  title="Drag to resize"
+                />
+              </div>
+            </div>
+            )}
+            {fullScreen !== "editors" && (
+            <div style={{
+              marginTop: 20,
+              borderRadius: "1.4rem",
+              background: darkMode
+                ? "linear-gradient(110deg, #36b6e61e 40%, #80d0c733 100%)"
+                : "linear-gradient(110deg, #c8e7fa22 40%, #faffb933 100%)",
+              padding: "18px",
+              boxShadow: darkMode
+                ? "0 2px 24px #09abe710"
+                : "0 2px 14px #a3e8e9a0",
+              border: darkMode
+                ? "1.5px solid #36b6e64a"
+                : "1.5px solid #aad1ea",
+              transition: ".2s"
+            }}>
+              <div style={{
+                fontWeight: "bold",
+                fontSize: "1.15rem",
+                color: darkMode ? "#fff" : "#1e293b",
+                marginBottom: "8px",
+                letterSpacing: ".5px"
+              }}>Live Preview:</div>
+              <iframe
+                title="Live Preview"
+                ref={iframeRef}
+                sandbox="allow-scripts allow-same-origin"
+                style={{
+                  width: "100%",
+                  height: "340px",
+                  borderRadius: "12px",
+                  background: "#f8fafc",
+                  border: "none"
+                }}
+              />
+            </div>
+            )}
+          </>
         )}
       </div>
 
