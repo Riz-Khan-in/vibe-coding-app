@@ -1,16 +1,55 @@
 import React, { useState, useRef, useEffect } from "react";
 import MonacoEditor from "react-monaco-editor";
 
+// For resizing, we use this simple hook:
+function useResizable(defaultHeight = 260) {
+  const [height, setHeight] = useState(defaultHeight);
+  const ref = useRef();
+  useEffect(() => {
+    const handle = ref.current;
+    if (!handle) return;
+    let startY, startHeight;
+    const onMouseMove = e => {
+      setHeight(Math.max(120, startHeight + (e.clientY - startY)));
+    };
+    const onMouseUp = () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    const onMouseDown = e => {
+      startY = e.clientY;
+      startHeight = height;
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    };
+    handle.addEventListener('mousedown', onMouseDown);
+    return () => {
+      handle.removeEventListener('mousedown', onMouseDown);
+    };
+  }, [height]);
+  return [height, ref];
+}
+
 const FONT_OPTIONS = [
   "Fira Mono",
   "Source Code Pro",
   "JetBrains Mono",
+  "Roboto Mono",
+  "Cascadia Mono",
+  "Ubuntu Mono",
+  "Monaco",
+  "Menlo",
+  "Consolas",
   "monospace"
 ];
 
 const THEME_OPTIONS = [
-  { label: "Dark", value: "vs-dark" },
-  { label: "Light", value: "vs-light" }
+  { label: "Dark (vs-dark)", value: "vs-dark" },
+  { label: "Light (vs-light)", value: "vs-light" },
+  { label: "Solarized Dark", value: "solarized-dark" },
+  { label: "Solarized Light", value: "solarized-light" },
+  { label: "High Contrast Black", value: "hc-black" },
+  { label: "High Contrast Light", value: "hc-light" }
 ];
 
 function App() {
@@ -23,7 +62,45 @@ function App() {
   const [font, setFont] = useState("Fira Mono");
   const [fontSize, setFontSize] = useState(15);
   const [editorTheme, setEditorTheme] = useState("vs-dark");
+  const [heightHTML, refHTML] = useResizable(220);
+  const [heightCSS, refCSS] = useResizable(220);
+  const [heightJS, refJS] = useResizable(220);
   const iframeRef = useRef(null);
+
+  // Register extra Monaco themes if needed (solarized etc)
+  useEffect(() => {
+    // Monaco is loaded dynamically by the component
+    if (window.monaco && window.monaco.editor) {
+      try {
+        // Solarized Dark
+        window.monaco.editor.defineTheme('solarized-dark', {
+          base: 'vs-dark',
+          inherit: true,
+          rules: [],
+          colors: {
+            'editor.background': '#002b36',
+            'editor.foreground': '#93a1a1',
+            'editorLineNumber.foreground': '#586e75',
+            'editorCursor.foreground': '#d33682',
+            'editor.selectionBackground': '#073642'
+          }
+        });
+        // Solarized Light
+        window.monaco.editor.defineTheme('solarized-light', {
+          base: 'vs',
+          inherit: true,
+          rules: [],
+          colors: {
+            'editor.background': '#fdf6e3',
+            'editor.foreground': '#657b83',
+            'editorLineNumber.foreground': '#93a1a1',
+            'editorCursor.foreground': '#d33682',
+            'editor.selectionBackground': '#eee8d5'
+          }
+        });
+      } catch {}
+    }
+  }, [editorTheme]);
 
   // For animated background
   useEffect(() => {
@@ -249,7 +326,7 @@ function App() {
           marginBottom: 36
         }}>
           {/* HTML */}
-          <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ flex: 1, minWidth: 240, position: "relative" }}>
             <div style={{
               color: "#7dd3fc",
               marginBottom: 10,
@@ -258,7 +335,7 @@ function App() {
               letterSpacing: "0.5px"
             }}>HTML</div>
             <MonacoEditor
-              height="27vh"
+              height={heightHTML}
               language="html"
               theme={editorTheme}
               value={html}
@@ -269,9 +346,20 @@ function App() {
               }}
               onChange={setHtml}
             />
+            <div
+              ref={refHTML}
+              style={{
+                position: "absolute",
+                left: 0, right: 0, bottom: 0,
+                height: 8,
+                cursor: "row-resize",
+                background: "rgba(0,0,0,0.05)"
+              }}
+              title="Drag to resize"
+            />
           </div>
           {/* CSS */}
-          <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ flex: 1, minWidth: 240, position: "relative" }}>
             <div style={{
               color: "#bbf7d0",
               marginBottom: 10,
@@ -280,7 +368,7 @@ function App() {
               letterSpacing: "0.5px"
             }}>CSS</div>
             <MonacoEditor
-              height="27vh"
+              height={heightCSS}
               language="css"
               theme={editorTheme}
               value={css}
@@ -291,9 +379,20 @@ function App() {
               }}
               onChange={setCss}
             />
+            <div
+              ref={refCSS}
+              style={{
+                position: "absolute",
+                left: 0, right: 0, bottom: 0,
+                height: 8,
+                cursor: "row-resize",
+                background: "rgba(0,0,0,0.05)"
+              }}
+              title="Drag to resize"
+            />
           </div>
           {/* JS */}
-          <div style={{ flex: 1, minWidth: 240 }}>
+          <div style={{ flex: 1, minWidth: 240, position: "relative" }}>
             <div style={{
               color: "#fca5a5",
               marginBottom: 10,
@@ -302,7 +401,7 @@ function App() {
               letterSpacing: "0.5px"
             }}>JavaScript</div>
             <MonacoEditor
-              height="27vh"
+              height={heightJS}
               language="javascript"
               theme={editorTheme}
               value={js}
@@ -312,6 +411,17 @@ function App() {
                 minimap: { enabled: false }
               }}
               onChange={setJs}
+            />
+            <div
+              ref={refJS}
+              style={{
+                position: "absolute",
+                left: 0, right: 0, bottom: 0,
+                height: 8,
+                cursor: "row-resize",
+                background: "rgba(0,0,0,0.05)"
+              }}
+              title="Drag to resize"
             />
           </div>
         </div>
