@@ -34,18 +34,43 @@ function renderMarkdown(md) {
 }
 
 function App() {
-  // Files: [{name, type, code}]
-  const [files, setFiles] = useState([
+  // --- Persistent Files Setup ---
+  const DEFAULT_FILES = [
     { name: "index.html", type: "html", code: "<h1>Hello, Vibe!</h1>" },
     { name: "style.css", type: "css", code: "h1 { color: #0099ff; }" },
     { name: "main.js", type: "js", code: "console.log('Hello, JS!')" }
-  ]);
-  const [activeFileIdx, setActiveFileIdx] = useState(0);
+  ];
+  const [files, setFiles] = useState(() => {
+    try {
+      const saved = localStorage.getItem("vibe_files");
+      return saved ? JSON.parse(saved) : DEFAULT_FILES;
+    } catch {
+      return DEFAULT_FILES;
+    }
+  });
+  const [activeFileIdx, setActiveFileIdx] = useState(() => {
+    const saved = localStorage.getItem("vibe_active");
+    return saved ? Number(saved) : 0;
+  });
+
+  // Autosave files
+  useEffect(() => {
+    try {
+      localStorage.setItem("vibe_files", JSON.stringify(files));
+    } catch {}
+  }, [files]);
+
+  // Autosave active file tab
+  useEffect(() => {
+    localStorage.setItem("vibe_active", activeFileIdx);
+  }, [activeFileIdx]);
+
+  // Sidebar, statusbar, dark mode, etc.
   const [showSidebar, setShowSidebar] = useState(true);
   const [showStatus, setShowStatus] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
 
-  // For Python/Markdown outputs
+  // Python/Markdown outputs
   const [pyOutput, setPyOutput] = useState("");
   const [mdPreview, setMdPreview] = useState(renderMarkdown(files.find(f=>f.type==="md")?.code||""));
 
