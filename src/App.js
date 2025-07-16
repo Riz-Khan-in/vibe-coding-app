@@ -95,6 +95,9 @@ function App() {
   const [paletteQuery, setPaletteQuery] = useState("");
   const paletteInputRef = useRef();
 
+  // Drag and drop state
+  const [dragOver, setDragOver] = useState(false);
+
   // VS Code-like background
   useEffect(() => {
     document.body.style.background = darkMode
@@ -188,6 +191,35 @@ function App() {
     saveAs(blob, "vibe-project.zip");
   }
 
+  // --- Upload/Restore ZIP ---
+  async function handleZipUpload(file) {
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const filePromises = [];
+      zip.forEach((relativePath, zipEntry) => {
+        if (!zipEntry.dir) {
+          filePromises.push(
+            zipEntry.async("string").then(code => {
+              let ext = relativePath.split('.').pop().toLowerCase();
+              let type = ["html","css","js","py","md"].includes(ext) ? ext : "txt";
+              let fname = zipEntry.name;
+              return { name: fname, type, code };
+            })
+          );
+        }
+      });
+      const newFiles = await Promise.all(filePromises);
+      if (newFiles.length > 0) {
+        setFiles(newFiles);
+        setActiveFileIdx(0);
+      } else {
+        alert("No valid files found in the ZIP!");
+      }
+    } catch (err) {
+      alert("Failed to load ZIP: " + err);
+    }
+  }
+
   // --- Command Palette logic ---
   const COMMANDS = [
     {name: "Toggle Dark/Light Theme", action: () => setDarkMode(d => !d)},
@@ -221,9 +253,36 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeydown);
   }, [paletteOpen]);
 
-  // Main layout
+  // --- Drag and drop wrapper ---
   return (
-    <div style={{height:"100vh", display:"flex", flexDirection:"column", fontFamily:"Segoe UI, Arial, sans-serif"}}>
+    <div
+      onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+      onDragLeave={e => { e.preventDefault(); setDragOver(false); }}
+      onDrop={e => {
+        e.preventDefault();
+        setDragOver(false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          const file = e.dataTransfer.files[0];
+          if (file.name.endsWith('.zip')) handleZipUpload(file);
+          else alert("Please drop a .zip file!");
+        }
+      }}
+      style={{
+        position: "relative", height: "100vh", width: "100vw",
+        background: dragOver ? "rgba(36,224,143,0.07)" : undefined,
+        transition: "background 0.2s"
+      }}
+    >
+      {dragOver &&
+        <div style={{
+          position:"absolute",top:0,left:0,right:0,bottom:0,
+          background:"rgba(36,224,143,0.25)",
+          zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",
+          fontSize:36,color:"#176a41",fontWeight:"bold",pointerEvents:"none"
+        }}>
+          Drop ZIP to Import Project
+        </div>
+      }
       {/* VS Code-style Title Bar */}
       <div style={{
         height: 34, background: "#24292e",
@@ -299,7 +358,7 @@ function App() {
         </div>
         {/* Main Editor Area */}
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,background:darkMode?"#1e1e1e":"#f4f8fa"}}>
-          {/* --- Toolbar: Font/Theme Selector + Download ZIP --- */}
+          {/* --- Toolbar: Font/Theme Selector + Download & Upload ZIP --- */}
           <div style={{
             display: "flex", alignItems: "center", gap: 12,
             background: darkMode ? "#181c23" : "#ddebf7",
@@ -332,6 +391,21 @@ function App() {
               background:"#079afc",color:"#fff",border:"none",padding:"7px 17px",
               borderRadius:8,fontWeight:"bold",marginLeft:18,cursor:"pointer"
             }}>Download ZIP</button>
+            <label style={{
+              background:"#45e399", color:"#144928", fontWeight:"bold",
+              padding:"7px 17px", borderRadius:8, marginLeft:12, cursor:"pointer"
+            }}>
+              Upload ZIP
+              <input
+                type="file"
+                accept=".zip"
+                style={{ display:"none" }}
+                onChange={e => {
+                  if (e.target.files && e.target.files[0]) handleZipUpload(e.target.files[0]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
           </div>
           {/* --- Tab Bar --- */}
           <div style={{
