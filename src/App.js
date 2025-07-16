@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
 import MonacoEditor from "react-monaco-editor";
 import Modal from "react-modal";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
 import "@vscode/codicons/dist/codicon.css";
 
 // VS Code sidebar icons
@@ -22,7 +24,6 @@ const LANGUAGES = [
 ];
 
 function renderMarkdown(md) {
-  // Simple Markdown render
   let html = md
     .replace(/^### (.*$)/gim, '<h3>$1</h3>')
     .replace(/^## (.*$)/gim, '<h2>$1</h2>')
@@ -59,35 +60,37 @@ function App() {
       localStorage.setItem("vibe_files", JSON.stringify(files));
     } catch {}
   }, [files]);
-
-  // Autosave active file tab
   useEffect(() => {
     localStorage.setItem("vibe_active", activeFileIdx);
   }, [activeFileIdx]);
 
-  // Sidebar, statusbar, dark mode, etc.
+  // UI State
   const [showSidebar, setShowSidebar] = useState(true);
   const [showStatus, setShowStatus] = useState(true);
   const [darkMode, setDarkMode] = useState(true);
 
-  // Python/Markdown outputs
+  // Fonts & themes
+  const FONT_OPTIONS = [
+    "Fira Mono", "Fira Code", "JetBrains Mono",
+    "Cascadia Mono", "Consolas", "Menlo", "monospace"
+  ];
+  const [font, setFont] = useState("Fira Mono");
+  const [fontSize, setFontSize] = useState(16);
+  const [editorTheme, setEditorTheme] = useState("vs-dark");
+
+  // Python/Markdown
   const [pyOutput, setPyOutput] = useState("");
   const [mdPreview, setMdPreview] = useState(renderMarkdown(files.find(f=>f.type==="md")?.code||""));
 
-  // VS Code-like: sidebar width, file explorer width
+  // VS Code-like UI
   const [sidebarWidth] = useState(55);
   const [explorerWidth, setExplorerWidth] = useState(220);
 
-  // Monaco theme & font
-  const [editorTheme, setEditorTheme] = useState("vs-dark");
-  const [font, setFont] = useState("Fira Mono");
-  const [fontSize, setFontSize] = useState(16);
-
-  // Refs for preview, etc.
+  // Monaco Editor refs
   const iframeRef = useRef();
   const pyodideRef = useRef(null);
 
-  // Command Palette state
+  // Command Palette
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState("");
   const paletteInputRef = useRef();
@@ -105,7 +108,7 @@ function App() {
     if (file?.type === "md") setMdPreview(renderMarkdown(file.code));
   }, [files, activeFileIdx]);
 
-  // Pyodide load
+  // Pyodide load (Python runner)
   async function loadPyodide() {
     if (!window.loadPyodide) {
       await new Promise((resolve) => {
@@ -175,6 +178,16 @@ function App() {
     return () => clearTimeout(timeout);
   }, [files]);
 
+  // --- Download Project as ZIP ---
+  async function downloadZip() {
+    const zip = new JSZip();
+    files.forEach(f => {
+      zip.file(f.name, f.code);
+    });
+    const blob = await zip.generateAsync({ type: "blob" });
+    saveAs(blob, "vibe-project.zip");
+  }
+
   // --- Command Palette logic ---
   const COMMANDS = [
     {name: "Toggle Dark/Light Theme", action: () => setDarkMode(d => !d)},
@@ -185,7 +198,6 @@ function App() {
     {name: "Add Markdown File", action: () => addFile("md")},
     {name: "Show/Hide Status Bar", action: () => setShowStatus(s => !s)},
     {name: "Show/Hide Sidebar", action: () => setShowSidebar(s => !s)},
-    // Add more as you like!
   ];
   function runPaletteCommand(idx) {
     if (filteredCommands[idx]) filteredCommands[idx].action();
@@ -287,7 +299,41 @@ function App() {
         </div>
         {/* Main Editor Area */}
         <div style={{flex:1,display:"flex",flexDirection:"column",minWidth:0,background:darkMode?"#1e1e1e":"#f4f8fa"}}>
-          {/* Tab Bar */}
+          {/* --- Toolbar: Font/Theme Selector + Download ZIP --- */}
+          <div style={{
+            display: "flex", alignItems: "center", gap: 12,
+            background: darkMode ? "#181c23" : "#ddebf7",
+            borderBottom: darkMode ? "1.5px solid #26292e" : "1.5px solid #e2effa",
+            padding: "6px 22px 6px 14px"
+          }}>
+            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Font:
+              <select value={font} onChange={e => setFont(e.target.value)} style={{marginLeft:6}}>
+                {FONT_OPTIONS.map(f => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Font Size:
+              <select value={fontSize} onChange={e => setFontSize(Number(e.target.value))} style={{marginLeft:6}}>
+                {[13,14,15,16,18,20,22,24].map(n => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </label>
+            <label style={{color:darkMode ? "#b0e6ff" : "#253f5a", fontWeight:600}}>Theme:
+              <select value={editorTheme} onChange={e => setEditorTheme(e.target.value)} style={{marginLeft:6}}>
+                <option value="vs-dark">VS Code Dark</option>
+                <option value="vs-light">VS Code Light</option>
+                <option value="hc-black">High Contrast</option>
+                <option value="hc-light">High Contrast Light</option>
+              </select>
+            </label>
+            <button onClick={downloadZip} style={{
+              background:"#079afc",color:"#fff",border:"none",padding:"7px 17px",
+              borderRadius:8,fontWeight:"bold",marginLeft:18,cursor:"pointer"
+            }}>Download ZIP</button>
+          </div>
+          {/* --- Tab Bar --- */}
           <div style={{
             display:"flex",alignItems:"center",height:36,background:"#23272e",borderBottom:"1.5px solid #25282f"
           }}>
@@ -316,7 +362,7 @@ function App() {
               );
             })}
           </div>
-          {/* Monaco Editor and Preview */}
+          {/* --- Monaco Editor and Preview --- */}
           <div style={{flex:1,display:"flex",minHeight:0}}>
             {/* Monaco Editor */}
             <div style={{flex:2,minWidth:0,background:"#1e1e1e",display:"flex",flexDirection:"column"}}>
@@ -324,7 +370,7 @@ function App() {
                 height="100%"
                 width="100%"
                 language={LANGUAGES.find(l=>l.type===files[activeFileIdx].type).type==="js" ? "javascript" : files[activeFileIdx].type}
-                theme={darkMode?"vs-dark":"vs-light"}
+                theme={editorTheme}
                 value={files[activeFileIdx].code}
                 options={{
                   fontSize: fontSize,
