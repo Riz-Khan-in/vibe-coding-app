@@ -1,12 +1,42 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import MonacoEditor from "react-monaco-editor";
 
 function App() {
-  const [code, setCode] = useState('// Start coding!\nconsole.log("Hello, Vibe!");');
+  const [html, setHtml] = useState("<h1>Hello, Vibe!</h1>");
+  const [css, setCss] = useState("h1 { color: #0099ff; text-align:center; }");
+  const [js, setJs] = useState('console.log("Vibe JS!");');
+  const iframeRef = useRef(null);
 
-  const handleEditorChange = (newValue) => {
-    setCode(newValue);
-  };
+  const buildSrcDoc = () => `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Preview</title>
+      <style>${css}</style>
+    </head>
+    <body>
+      ${html}
+      <script>
+        try {
+          ${js}
+        } catch (e) {
+          document.body.innerHTML += "<pre style='color:red'>" + e + "</pre>";
+        }
+      <\/script>
+    </body>
+    </html>
+  `;
+
+  // Update iframe on code change
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (iframeRef.current) {
+        iframeRef.current.srcdoc = buildSrcDoc();
+      }
+    }, 400); // Debounce for smooth updates
+    return () => clearTimeout(timeout);
+  }, [html, css, js]);
 
   return (
     <div style={{
@@ -29,30 +59,75 @@ function App() {
           letterSpacing: "1px",
           textShadow: "0 2px 10px #2228"
         }}>
-          {/* If you have a logo, add: <img src="/logo.png" style={{ height: 36, verticalAlign: 'middle', marginRight: 10 }} alt="logo" /> */}
           Vibe Coding Playground
         </span>
       </header>
       <div style={{
         margin: "32px auto",
-        maxWidth: 900,
+        maxWidth: 1200,
         background: "rgba(22,24,34,0.98)",
         borderRadius: "24px",
         boxShadow: "0 6px 24px #000a",
         padding: "28px"
       }}>
-        <MonacoEditor
-          height="60vh"
-          language="javascript"
-          theme="vs-dark"
-          value={code}
-          options={{
-            selectOnLineNumbers: true,
-            fontSize: 16,
-            minimap: { enabled: false }
-          }}
-          onChange={handleEditorChange}
-        />
+        <div style={{
+          display: "flex",
+          gap: 12,
+          flexWrap: "wrap"
+        }}>
+          <div style={{ flex: 1, minWidth: 250 }}>
+            <div style={{color:"#7dd3fc",marginBottom:6,fontWeight:"bold"}}>HTML</div>
+            <MonacoEditor
+              height="28vh"
+              language="html"
+              theme="vs-dark"
+              value={html}
+              options={{ fontSize: 15, minimap: { enabled: false } }}
+              onChange={setHtml}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 250 }}>
+            <div style={{color:"#bbf7d0",marginBottom:6,fontWeight:"bold"}}>CSS</div>
+            <MonacoEditor
+              height="28vh"
+              language="css"
+              theme="vs-dark"
+              value={css}
+              options={{ fontSize: 15, minimap: { enabled: false } }}
+              onChange={setCss}
+            />
+          </div>
+          <div style={{ flex: 1, minWidth: 250 }}>
+            <div style={{color:"#fca5a5",marginBottom:6,fontWeight:"bold"}}>JavaScript</div>
+            <MonacoEditor
+              height="28vh"
+              language="javascript"
+              theme="vs-dark"
+              value={js}
+              options={{ fontSize: 15, minimap: { enabled: false } }}
+              onChange={setJs}
+            />
+          </div>
+        </div>
+        <div style={{marginTop: "30px"}}>
+          <div style={{
+            fontWeight: "bold",
+            fontSize: "1.15rem",
+            color: "#fff",
+            marginBottom: "8px"
+          }}>Live Preview:</div>
+          <iframe
+            title="Live Preview"
+            ref={iframeRef}
+            sandbox="allow-scripts allow-same-origin"
+            style={{
+              width: "100%",
+              height: "320px",
+              borderRadius: "14px",
+              background: "#fff"
+            }}
+          />
+        </div>
       </div>
       <footer style={{
         color: "#fff8",
