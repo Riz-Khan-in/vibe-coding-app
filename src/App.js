@@ -1,19 +1,26 @@
 import React, { useState, useRef, useEffect } from "react";
 import MonacoEditor from "react-monaco-editor";
 
-// File icons
+// Import Pyodide loader for Python (via CDN)
+const pyodideUrl = "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/pyodide.js";
+
 const FILE_ICONS = {
   html: "🟧",
   js: "🟨",
-  css: "🟦"
+  css: "🟦",
+  py: "🐍",
+  md: "📝"
+};
+const LANG_COLORS = {
+  html: "#f97316", js: "#eab308", css: "#3b82f6", py: "#22d3ee", md: "#b4c6f9"
 };
 
-// Default files
 const defaultHtmlFile = i => ({ name: `index${i > 1 ? i : ""}.html`, language: "html", code: `<h1>Hello, Vibe ${i}!</h1>` });
 const defaultJsFile = i => ({ name: `script${i > 1 ? i : ""}.js`, language: "javascript", code: `console.log("Vibe JS ${i}!");` });
 const defaultCssFile = i => ({ name: `style${i > 1 ? i : ""}.css`, language: "css", code: `h1 { color: #0099ff; text-align:center; }` });
+const defaultPyFile = i => ({ name: `main${i > 1 ? i : ""}.py`, language: "python", code: `print("Hello, Python ${i}!")` });
+const defaultMdFile = i => ({ name: `note${i > 1 ? i : ""}.md`, language: "markdown", code: `# Welcome to Markdown ${i}\nType *here* and see the preview!` });
 
-// Vertical resize
 function useResizable(defaultHeight = 220) {
   const [height, setHeight] = useState(defaultHeight);
   const ref = useRef();
@@ -36,8 +43,6 @@ function useResizable(defaultHeight = 220) {
   }, [height]);
   return [height, ref];
 }
-
-// Horizontal resize for preview
 function useHorizontalResizable(defaultWidth = 450, min = 280, max = 900) {
   const [width, setWidth] = useState(defaultWidth);
   const ref = useRef();
@@ -75,7 +80,6 @@ const THEME_OPTIONS = [
   { label: "High Contrast Light", value: "hc-light" }
 ];
 
-// Tab style
 const tabStyle = (active, color, darkMode) => ({
   padding: "5px 14px 6px 12px",
   marginRight: 4,
@@ -95,33 +99,60 @@ const tabStyle = (active, color, darkMode) => ({
   transition: ".13s"
 });
 
+// Simple Markdown render (no dependency)
+function renderMarkdown(md) {
+  let html = md
+    .replace(/^### (.*$)/gim, '<h3>$1</h3>')
+    .replace(/^## (.*$)/gim, '<h2>$1</h2>')
+    .replace(/^# (.*$)/gim, '<h1>$1</h1>')
+    .replace(/\*\*(.*)\*\*/gim, '<b>$1</b>')
+    .replace(/\*(.*)\*/gim, '<i>$1</i>')
+    .replace(/\n$/gim, '<br />');
+  return html;
+}
+
 function App() {
-  // File states
+  // --- All file states ---
   const [htmlFiles, setHtmlFiles] = useState([defaultHtmlFile(1)]);
   const [activeHtml, setActiveHtml] = useState(0);
   const [jsFiles, setJsFiles] = useState([defaultJsFile(1)]);
   const [activeJs, setActiveJs] = useState(0);
   const [cssFiles, setCssFiles] = useState([defaultCssFile(1)]);
   const [activeCss, setActiveCss] = useState(0);
+  const [pyFiles, setPyFiles] = useState([defaultPyFile(1)]);
+  const [activePy, setActivePy] = useState(0);
+  const [mdFiles, setMdFiles] = useState([defaultMdFile(1)]);
+  const [activeMd, setActiveMd] = useState(0);
 
-  // UI states
+  // UI
   const [darkMode, setDarkMode] = useState(true);
   const [fullScreen, setFullScreen] = useState(null);
-  const [layout, setLayout] = useState("row"); // row = editors side by side, preview below; column = editors stacked, preview right
+  const [layout, setLayout] = useState("row");
   const [font, setFont] = useState("Fira Mono");
   const [fontSize, setFontSize] = useState(15);
   const [editorTheme, setEditorTheme] = useState("vs-dark");
-  const [heightHTML, refHTML] = useResizable(220);
-  const [heightCSS, refCSS] = useResizable(220);
-  const [heightJS, refJS] = useResizable(220);
+  const [heightHTML, refHTML] = useResizable(210);
+  const [heightCSS, refCSS] = useResizable(210);
+  const [heightJS, refJS] = useResizable(210);
+  const [heightPy, refPy] = useResizable(210);
+  const [heightMd, refMd] = useResizable(210);
   const [previewWidth, refPreview] = useHorizontalResizable(400, 280, 900);
+
+  // Tab renaming
   const [renamingHtml, setRenamingHtml] = useState(-1);
   const [renamingJs, setRenamingJs] = useState(-1);
   const [renamingCss, setRenamingCss] = useState(-1);
+  const [renamingPy, setRenamingPy] = useState(-1);
+  const [renamingMd, setRenamingMd] = useState(-1);
 
-  const iframeRef = useRef(null);
+  // Output for Python and Markdown
+  const [pyOutput, setPyOutput] = useState("");
+  const [mdPreview, setMdPreview] = useState(renderMarkdown(mdFiles[activeMd].code));
 
-  // Monaco themes registration (solarized etc)
+  // Pyodide runtime
+  const pyodideRef = useRef(null);
+
+  // Monaco themes
   useEffect(() => {
     if (window.monaco && window.monaco.editor) {
       try {
@@ -149,13 +180,14 @@ function App() {
     }
   }, [editorTheme]);
 
+  // Professional background
   useEffect(() => {
     const style = document.createElement('style');
     style.innerHTML = `
       body {
         min-height:100vh; margin:0;
         background: ${darkMode
-          ? "linear-gradient(-45deg, #222831, #313a52, #0093e9, #80d0c7)"
+          ? "linear-gradient(-45deg, #1a2233, #314c72, #0093e9, #80d0c7)"
           : "linear-gradient(-45deg, #f7fafc 60%, #e0f2fe 100%)"
         };
         background-size: 400% 400%;
@@ -172,83 +204,62 @@ function App() {
     return () => document.head.removeChild(style);
   }, [darkMode]);
 
-  // Generate <style> and <script> blocks for all files
-  function buildSrcDoc() {
-    return `
-      <!DOCTYPE html>
-      <html lang="en"><head>
-        <meta charset="UTF-8"><title>Preview</title>
-        <style>
-        ${cssFiles.map(f => f.code).join("\n")}
-        </style>
-      </head><body>
-        ${htmlFiles.map(f => f.code).join("\n")}
-        <script>
-        try {
-          ${jsFiles.map(f => f.code).join("\n")}
-        } catch (e) {
-          document.body.innerHTML += "<pre style='color:red'>" + e + "</pre>";
-        }
-        <\/script>
-      </body></html>
-    `;
+  // Markdown preview live
+  useEffect(() => {
+    setMdPreview(renderMarkdown(mdFiles[activeMd].code));
+  }, [mdFiles, activeMd]);
+
+  // Pyodide loader (loads only once, when needed)
+  async function loadPyodide() {
+    if (!window.loadPyodide) {
+      await new Promise((resolve) => {
+        const script = document.createElement("script");
+        script.src = pyodideUrl;
+        script.onload = resolve;
+        document.body.appendChild(script);
+      });
+    }
+    if (!pyodideRef.current) {
+      pyodideRef.current = await window.loadPyodide({ indexURL: "https://cdn.jsdelivr.net/pyodide/v0.25.1/full/" });
+    }
+    return pyodideRef.current;
   }
 
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (iframeRef.current) {
-        iframeRef.current.srcdoc = buildSrcDoc();
-      }
-    }, 400);
-    return () => clearTimeout(timeout);
-  }, [htmlFiles, jsFiles, cssFiles]);
+  // Python runner
+  const runPython = async () => {
+    setPyOutput("Running...");
+    try {
+      const pyodide = await loadPyodide();
+      let result = await pyodide.runPythonAsync(pyFiles[activePy].code);
+      setPyOutput(result !== undefined ? String(result) : "(no output)");
+    } catch (e) {
+      setPyOutput(String(e));
+    }
+  };
 
-  useEffect(() => { setEditorTheme(darkMode ? "vs-dark" : "vs-light"); }, [darkMode]);
-
-  // File management helpers
+  // ---- File helpers ----
+  // HTML
   const addHtmlFile = () => setHtmlFiles(old => [...old, defaultHtmlFile(old.length+1)]);
   const removeHtmlFile = i => setHtmlFiles(files => files.length === 1 ? files : files.filter((_, idx) => idx !== i));
   const renameHtmlFile = (i, newName) => setHtmlFiles(files => files.map((f, idx) => idx === i ? {...f, name: newName} : f));
-
+  // JS
   const addJsFile = () => setJsFiles(old => [...old, defaultJsFile(old.length+1)]);
   const removeJsFile = i => setJsFiles(files => files.length === 1 ? files : files.filter((_, idx) => idx !== i));
   const renameJsFile = (i, newName) => setJsFiles(files => files.map((f, idx) => idx === i ? {...f, name: newName} : f));
-
+  // CSS
   const addCssFile = () => setCssFiles(old => [...old, defaultCssFile(old.length+1)]);
   const removeCssFile = i => setCssFiles(files => files.length === 1 ? files : files.filter((_, idx) => idx !== i));
   const renameCssFile = (i, newName) => setCssFiles(files => files.map((f, idx) => idx === i ? {...f, name: newName} : f));
+  // Python
+  const addPyFile = () => setPyFiles(old => [...old, defaultPyFile(old.length+1)]);
+  const removePyFile = i => setPyFiles(files => files.length === 1 ? files : files.filter((_, idx) => idx !== i));
+  const renamePyFile = (i, newName) => setPyFiles(files => files.map((f, idx) => idx === i ? {...f, name: newName} : f));
+  // Markdown
+  const addMdFile = () => setMdFiles(old => [...old, defaultMdFile(old.length+1)]);
+  const removeMdFile = i => setMdFiles(files => files.length === 1 ? files : files.filter((_, idx) => idx !== i));
+  const renameMdFile = (i, newName) => setMdFiles(files => files.map((f, idx) => idx === i ? {...f, name: newName} : f));
 
-  // Open in new tab helpers
-  const openPreviewInTab = () => {
-    const win = window.open();
-    win.document.write(buildSrcDoc());
-    win.document.close();
-  };
-  const openCodeInTab = () => {
-    const content = `/* HTML Files */\n${htmlFiles.map(f=>`// ${f.name}\n${f.code}\n`).join("\n")}
-      /* CSS Files */\n${cssFiles.map(f=>`// ${f.name}\n${f.code}\n`).join("\n")}
-      /* JS Files */\n${jsFiles.map(f=>`// ${f.name}\n${f.code}\n`).join("\n")}`;
-    const blob = new Blob([content], {type: "text/plain"});
-    const url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
-  };
-
-  // Tab color codes
-  const colorHtml = "#f97316", colorJs = "#eab308", colorCss = "#3b82f6";
-
-  // Professional Glass Card style
-  const cardStyle = {
-    background: darkMode ? "rgba(33,38,60,0.98)" : "rgba(255,255,255,0.99)",
-    borderRadius: "2.2rem",
-    boxShadow: darkMode ? "0 8px 36px #1e293b70" : "0 8px 36px #b5d5f990",
-    border: darkMode ? "1.5px solid #36b6e6a0" : "1.5px solid #c8e7fa",
-    padding: "30px 24px 34px 24px",
-    margin: "38px auto",
-    maxWidth: 1350,
-    transition: ".3s"
-  };
-
-  // VS Code Tab Group
+  // --- Tab group ---
   function TabGroup({files, active, setActive, add, remove, rename, renaming, setRenaming, color, icon, darkMode}) {
     return (
       <div style={{marginBottom:2, display:"flex",alignItems:"center",flexWrap:"wrap"}}>
@@ -275,22 +286,22 @@ function App() {
             </button>
           )
         )}
-        <button onClick={add} style={{marginLeft:4,border:"none",background:"none",color:color,fontWeight:900,fontSize:"1.24em",cursor:"pointer"}} title={`Add ${icon.trim()} file`}>＋</button>
+        <button onClick={add} style={{marginLeft:4,border:"none",background:"none",color:color,fontWeight:900,fontSize:"1.23em",cursor:"pointer"}} title={`Add ${icon.trim()} file`}>＋</button>
       </div>
     );
   }
 
-  // Editors group (shown as columns or rows as needed)
+  // --- Editors UI (with all languages) ---
   const editorsBlock = (
     <div style={{
-      display: "flex",
-      flexDirection: layout === "row" ? "row" : "column",
+      display: layout === "row" ? "flex" : "block",
+      flexDirection: "row",
       gap: 22,
       marginBottom: layout === "row" ? 34 : 0,
       marginRight: 0
     }}>
-      {/* HTML Editor */}
-      <div style={{ flex: 1, minWidth: 210, position: "relative" }}>
+      {/* HTML */}
+      <div style={{ flex: 1, minWidth: 170, position: "relative", marginBottom: layout === "row" ? 0 : 24 }}>
         <TabGroup
           files={htmlFiles}
           active={activeHtml}
@@ -300,32 +311,25 @@ function App() {
           rename={renameHtmlFile}
           renaming={renamingHtml}
           setRenaming={setRenamingHtml}
-          color={colorHtml}
+          color={LANG_COLORS.html}
           icon={FILE_ICONS.html}
           darkMode={darkMode}
         />
-        <div style={{color: colorHtml, margin:"9px 0 6px 0", fontWeight: "bold", fontSize: "1.12rem"}}>HTML</div>
         <MonacoEditor
           height={heightHTML}
           language="html"
           theme={editorTheme}
           value={htmlFiles[activeHtml].code}
-          options={{
-            fontSize: fontSize,
-            fontFamily: font,
-            minimap: { enabled: false }
-          }}
-          onChange={code =>
-            setHtmlFiles(files => files.map((f, idx) => idx === activeHtml ? { ...f, code } : f))
-          }
+          options={{ fontSize: fontSize, fontFamily: font, minimap: { enabled: false } }}
+          onChange={code => setHtmlFiles(files => files.map((f, idx) => idx === activeHtml ? { ...f, code } : f))}
         />
         <div ref={refHTML} style={{
           position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
           cursor: "row-resize", background: "rgba(0,0,0,0.05)"
         }} title="Drag to resize"/>
       </div>
-      {/* CSS Editor */}
-      <div style={{ flex: 1, minWidth: 210, position: "relative" }}>
+      {/* CSS */}
+      <div style={{ flex: 1, minWidth: 170, position: "relative", marginBottom: layout === "row" ? 0 : 24 }}>
         <TabGroup
           files={cssFiles}
           active={activeCss}
@@ -335,32 +339,25 @@ function App() {
           rename={renameCssFile}
           renaming={renamingCss}
           setRenaming={setRenamingCss}
-          color={colorCss}
+          color={LANG_COLORS.css}
           icon={FILE_ICONS.css}
           darkMode={darkMode}
         />
-        <div style={{color: colorCss, margin:"9px 0 6px 0", fontWeight: "bold", fontSize: "1.12rem"}}>CSS</div>
         <MonacoEditor
           height={heightCSS}
           language="css"
           theme={editorTheme}
           value={cssFiles[activeCss].code}
-          options={{
-            fontSize: fontSize,
-            fontFamily: font,
-            minimap: { enabled: false }
-          }}
-          onChange={code =>
-            setCssFiles(files => files.map((f, idx) => idx === activeCss ? { ...f, code } : f))
-          }
+          options={{ fontSize: fontSize, fontFamily: font, minimap: { enabled: false } }}
+          onChange={code => setCssFiles(files => files.map((f, idx) => idx === activeCss ? { ...f, code } : f))}
         />
         <div ref={refCSS} style={{
           position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
           cursor: "row-resize", background: "rgba(0,0,0,0.05)"
         }} title="Drag to resize"/>
       </div>
-      {/* JS Editor */}
-      <div style={{ flex: 1, minWidth: 210, position: "relative" }}>
+      {/* JS */}
+      <div style={{ flex: 1, minWidth: 170, position: "relative", marginBottom: layout === "row" ? 0 : 24 }}>
         <TabGroup
           files={jsFiles}
           active={activeJs}
@@ -370,104 +367,172 @@ function App() {
           rename={renameJsFile}
           renaming={renamingJs}
           setRenaming={setRenamingJs}
-          color={colorJs}
+          color={LANG_COLORS.js}
           icon={FILE_ICONS.js}
           darkMode={darkMode}
         />
-        <div style={{color: colorJs, margin:"9px 0 6px 0", fontWeight: "bold", fontSize: "1.12rem"}}>JavaScript</div>
         <MonacoEditor
           height={heightJS}
           language="javascript"
           theme={editorTheme}
           value={jsFiles[activeJs].code}
-          options={{
-            fontSize: fontSize,
-            fontFamily: font,
-            minimap: { enabled: false }
-          }}
-          onChange={code =>
-            setJsFiles(files => files.map((f, idx) => idx === activeJs ? { ...f, code } : f))
-          }
+          options={{ fontSize: fontSize, fontFamily: font, minimap: { enabled: false } }}
+          onChange={code => setJsFiles(files => files.map((f, idx) => idx === activeJs ? { ...f, code } : f))}
         />
         <div ref={refJS} style={{
           position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
           cursor: "row-resize", background: "rgba(0,0,0,0.05)"
         }} title="Drag to resize"/>
       </div>
+      {/* Python */}
+      <div style={{ flex: 1, minWidth: 170, position: "relative", marginBottom: layout === "row" ? 0 : 24 }}>
+        <TabGroup
+          files={pyFiles}
+          active={activePy}
+          setActive={setActivePy}
+          add={addPyFile}
+          remove={removePyFile}
+          rename={renamePyFile}
+          renaming={renamingPy}
+          setRenaming={setRenamingPy}
+          color={LANG_COLORS.py}
+          icon={FILE_ICONS.py}
+          darkMode={darkMode}
+        />
+        <div style={{display:"flex",alignItems:"center",marginBottom:8}}>
+          <span style={{color:LANG_COLORS.py, fontWeight:600, fontSize:"1.1rem"}}>Python</span>
+          <button onClick={runPython} style={{
+            marginLeft:10, background:LANG_COLORS.py, color:"#fff",
+            padding:"2.5px 11px", borderRadius:8, border:"none", cursor:"pointer", fontWeight:"bold"
+          }}>Run ▶️</button>
+        </div>
+        <MonacoEditor
+          height={heightPy}
+          language="python"
+          theme={editorTheme}
+          value={pyFiles[activePy].code}
+          options={{ fontSize: fontSize, fontFamily: font, minimap: { enabled: false } }}
+          onChange={code => setPyFiles(files => files.map((f, idx) => idx === activePy ? { ...f, code } : f))}
+        />
+        <div ref={refPy} style={{
+          position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
+          cursor: "row-resize", background: "rgba(0,0,0,0.05)"
+        }} title="Drag to resize"/>
+        <pre style={{
+          background:"#111a",
+          color:"#0ff",
+          borderRadius:6,
+          padding:"7px 10px",
+          fontSize:"1.03em",
+          marginTop:8,
+          minHeight:32,
+          wordBreak:"break-word"
+        }}>
+          {pyOutput}
+        </pre>
+      </div>
+      {/* Markdown */}
+      <div style={{ flex: 1, minWidth: 170, position: "relative", marginBottom: layout === "row" ? 0 : 24 }}>
+        <TabGroup
+          files={mdFiles}
+          active={activeMd}
+          setActive={setActiveMd}
+          add={addMdFile}
+          remove={removeMdFile}
+          rename={renameMdFile}
+          renaming={renamingMd}
+          setRenaming={setRenamingMd}
+          color={LANG_COLORS.md}
+          icon={FILE_ICONS.md}
+          darkMode={darkMode}
+        />
+        <div style={{color: LANG_COLORS.md, margin:"9px 0 6px 0", fontWeight: "bold", fontSize: "1.12rem"}}>Markdown</div>
+        <MonacoEditor
+          height={heightMd}
+          language="markdown"
+          theme={editorTheme}
+          value={mdFiles[activeMd].code}
+          options={{ fontSize: fontSize, fontFamily: font, minimap: { enabled: false } }}
+          onChange={code => setMdFiles(files => files.map((f, idx) => idx === activeMd ? { ...f, code } : f))}
+        />
+        <div ref={refMd} style={{
+          position: "absolute", left: 0, right: 0, bottom: 0, height: 8,
+          cursor: "row-resize", background: "rgba(0,0,0,0.05)"
+        }} title="Drag to resize"/>
+        <div style={{
+          marginTop:10,
+          background:"#fafafc",
+          borderRadius:8,
+          padding:"9px 14px",
+          border:"1.3px solid #e0e0ff",
+          color:"#222",
+          fontSize:"1.1em"
+        }}
+        dangerouslySetInnerHTML={{__html: mdPreview}}
+        />
+      </div>
     </div>
   );
 
-  // Preview block, with resizable panel for column mode
-  const previewBlock = (
-    <div style={{
-      ...(layout === "column"
-        ? {
-            position: "relative",
-            minWidth: 220,
-            maxWidth: 800,
-            background: darkMode
-              ? "linear-gradient(110deg, #36b6e61e 40%, #80d0c733 100%)"
-              : "linear-gradient(110deg, #c8e7fa22 40%, #faffb933 100%)",
-            borderRadius: "1.2rem",
-            padding: "8px 8px 8px 16px",
-            boxShadow: darkMode
-              ? "0 2px 14px #09abe710"
-              : "0 2px 10px #b9ebfc80",
-            border: darkMode
-              ? "1.5px solid #36b6e64a"
-              : "1.5px solid #aad1ea",
-            width: previewWidth,
-            marginLeft: 22,
-            transition: ".2s"
-          }
-        : {
-            marginTop: 24,
-            borderRadius: "1.4rem",
-            background: darkMode
-              ? "linear-gradient(110deg, #36b6e61e 40%, #80d0c733 100%)"
-              : "linear-gradient(110deg, #c8e7fa22 40%, #faffb933 100%)",
-            padding: "18px",
-            boxShadow: darkMode
-              ? "0 2px 24px #09abe710"
-              : "0 2px 14px #a3e8e9a0",
-            border: darkMode
-              ? "1.5px solid #36b6e64a"
-              : "1.5px solid #aad1ea",
-            transition: ".2s"
-          }),
-    }}>
-      {layout === "column" && (
-        <div
-          ref={refPreview}
-          style={{
-            position: "absolute", left: -9, top: 0, width: 10, height: "100%",
-            cursor: "col-resize", zIndex: 9, background: "rgba(0,0,0,0.01)"
-          }}
-          title="Drag to resize preview"
-        />
-      )}
-      <div style={{
-        fontWeight:"bold",
-        fontSize:"1.1rem",
-        color: darkMode ? "#fff":"#1e293b",
-        marginBottom:8,
-        letterSpacing:".5px",
-        marginLeft: layout === "column" ? 6 : 2
-      }}>Live Preview:</div>
-      <iframe
-        title="Live Preview"
-        ref={iframeRef}
-        sandbox="allow-scripts allow-same-origin"
-        style={{
-          width: "100%",
-          height: "350px",
-          borderRadius: "12px",
-          background: "#f8fafc",
-          border: "none"
-        }}
-      />
-    </div>
-  );
+  // ---- Preview Block: as before (for HTML/CSS/JS) ----
+  const iframeRef = useRef(null);
+  function buildSrcDoc() {
+    return `
+      <!DOCTYPE html>
+      <html lang="en"><head>
+        <meta charset="UTF-8"><title>Preview</title>
+        <style>
+        ${cssFiles.map(f => f.code).join("\n")}
+        </style>
+      </head><body>
+        ${htmlFiles.map(f => f.code).join("\n")}
+        <script>
+        try {
+          ${jsFiles.map(f => f.code).join("\n")}
+        } catch (e) {
+          document.body.innerHTML += "<pre style='color:red'>" + e + "</pre>";
+        }
+        <\/script>
+      </body></html>
+    `;
+  }
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      if (iframeRef.current) {
+        iframeRef.current.srcdoc = buildSrcDoc();
+      }
+    }, 400);
+    return () => clearTimeout(timeout);
+  }, [htmlFiles, jsFiles, cssFiles]);
+
+  // Open in new tab
+  const openPreviewInTab = () => {
+    const win = window.open();
+    win.document.write(buildSrcDoc());
+    win.document.close();
+  };
+  const openCodeInTab = () => {
+    const content = `/* HTML Files */\n${htmlFiles.map(f=>`// ${f.name}\n${f.code}\n`).join("\n")}
+      /* CSS Files */\n${cssFiles.map(f=>`// ${f.name}\n${f.code}\n`).join("\n")}
+      /* JS Files */\n${jsFiles.map(f=>`// ${f.name}\n${f.code}\n`).join("\n")}
+      /* Python Files */\n${pyFiles.map(f=>`# ${f.name}\n${f.code}\n`).join("\n")}
+      /* Markdown Files */\n${mdFiles.map(f=>`// ${f.name}\n${f.code}\n`).join("\n")}`;
+    const blob = new Blob([content], {type: "text/plain"});
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+  };
+
+  // ---- Layouts ----
+  const cardStyle = {
+    background: darkMode ? "rgba(33,38,60,0.98)" : "rgba(255,255,255,0.99)",
+    borderRadius: "2.2rem",
+    boxShadow: darkMode ? "0 8px 36px #1e293b70" : "0 8px 36px #b5d5f990",
+    border: darkMode ? "1.5px solid #36b6e6a0" : "1.5px solid #c8e7fa",
+    padding: "30px 24px 34px 24px",
+    margin: "38px auto",
+    maxWidth: 1850,
+    transition: ".3s"
+  };
 
   // Final Layout
   return (
@@ -556,21 +621,117 @@ function App() {
             }}>View Preview in New Tab</button>
           </div>
         </div>
-        {/* Editor + Preview layout */}
+        {/* Editors + Preview */}
         {layout === "row" && fullScreen !== "preview" && fullScreen !== "editors" && (
           <>
             {editorsBlock}
-            {previewBlock}
+            <div style={{
+              marginTop: 24,
+              borderRadius: "1.4rem",
+              background: darkMode
+                ? "linear-gradient(110deg, #36b6e61e 40%, #80d0c733 100%)"
+                : "linear-gradient(110deg, #c8e7fa22 40%, #faffb933 100%)",
+              padding: "18px",
+              boxShadow: darkMode
+                ? "0 2px 24px #09abe710"
+                : "0 2px 14px #a3e8e9a0",
+              border: darkMode
+                ? "1.5px solid #36b6e64a"
+                : "1.5px solid #aad1ea",
+              transition: ".2s"
+            }}>
+              <div style={{
+                fontWeight:"bold",
+                fontSize:"1.1rem",
+                color: darkMode ? "#fff":"#1e293b",
+                marginBottom:8,
+                letterSpacing:".5px"
+              }}>Live Preview (HTML/CSS/JS):</div>
+              <iframe
+                title="Live Preview"
+                ref={iframeRef}
+                sandbox="allow-scripts allow-same-origin"
+                style={{
+                  width: "100%",
+                  height: "350px",
+                  borderRadius: "12px",
+                  background: "#f8fafc",
+                  border: "none"
+                }}
+              />
+            </div>
           </>
         )}
         {layout === "column" && fullScreen !== "preview" && fullScreen !== "editors" && (
           <div style={{display:"flex",flexDirection:"row"}}>
             <div style={{flex:2}}>{editorsBlock}</div>
-            <div>{previewBlock}</div>
+            <div style={{
+              position: "relative",
+              minWidth: 220,
+              maxWidth: 800,
+              background: darkMode
+                ? "linear-gradient(110deg, #36b6e61e 40%, #80d0c733 100%)"
+                : "linear-gradient(110deg, #c8e7fa22 40%, #faffb933 100%)",
+              borderRadius: "1.2rem",
+              padding: "8px 8px 8px 16px",
+              boxShadow: darkMode
+                ? "0 2px 14px #09abe710"
+                : "0 2px 10px #b9ebfc80",
+              border: darkMode
+                ? "1.5px solid #36b6e64a"
+                : "1.5px solid #aad1ea",
+              width: previewWidth,
+              marginLeft: 22,
+              transition: ".2s"
+            }}>
+              <div
+                ref={refPreview}
+                style={{
+                  position: "absolute", left: -9, top: 0, width: 10, height: "100%",
+                  cursor: "col-resize", zIndex: 9, background: "rgba(0,0,0,0.01)"
+                }}
+                title="Drag to resize preview"
+              />
+              <div style={{
+                fontWeight:"bold",
+                fontSize:"1.1rem",
+                color: darkMode ? "#fff":"#1e293b",
+                marginBottom:8,
+                letterSpacing:".5px",
+                marginLeft:6
+              }}>Live Preview (HTML/CSS/JS):</div>
+              <iframe
+                title="Live Preview"
+                ref={iframeRef}
+                sandbox="allow-scripts allow-same-origin"
+                style={{
+                  width: "100%",
+                  height: "350px",
+                  borderRadius: "12px",
+                  background: "#f8fafc",
+                  border: "none"
+                }}
+              />
+            </div>
           </div>
         )}
         {/* Only preview */}
-        {fullScreen === "preview" && previewBlock}
+        {fullScreen === "preview" &&
+          <div style={{marginTop:30}}>
+            <iframe
+              title="Live Preview"
+              ref={iframeRef}
+              sandbox="allow-scripts allow-same-origin"
+              style={{
+                width: "100%",
+                height: "420px",
+                borderRadius: "12px",
+                background: "#f8fafc",
+                border: "none"
+              }}
+            />
+          </div>
+        }
         {/* Only editors */}
         {fullScreen === "editors" && editorsBlock}
       </div>
