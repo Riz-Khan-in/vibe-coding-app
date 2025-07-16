@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import MonacoEditor from "react-monaco-editor";
 import Modal from "react-modal";
-import "react-monaco-editor/node_modules/monaco-editor/min/vs/editor/editor.main.css";
 import "@vscode/codicons/dist/codicon.css";
 
 // VS Code sidebar icons
